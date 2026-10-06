@@ -327,6 +327,6 @@ def make_data_sampler(
     if noise_scale > 0:
       _, noise_key = jax.random.split(key)
       examples += noise_scale * jax.random.normal(noise_key, examples.shape)
-    return {'examples': examples, 'labels': labels}
+    return {'examples': examples, 'labels': labels,'class_idxs':class_out['class_idxs'],'idx_types':class_out['idx_types'],'exemplar_inds':exemplar_inds}
   return sample
 
