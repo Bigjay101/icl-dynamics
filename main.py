@@ -211,6 +211,77 @@ def evaluate(
     retval[k] = eval_fn(model, eval_data[k]['examples'], eval_data[k]['labels'], key=seed)
   return retval
 
+POOL_KEYS = ['class_idxs', 'exemplar_inds', 'idx_types', 'labels']
+
+@partial(jax.jit, static_argnames='batch_size')
+def get_pool_batch(data, pool_dev, perm, offset, batch_size):
+  '''
+  Builds one training batch from the pool, in the same format as
+  train_data_sampler: {'examples': [bs, L+1, dim], 'labels': [bs, L+1]}.
+
+  Takes the `batch_size` rows of the pool at positions offset..offset+bs of
+  the shuffled order `perm`, and looks their embeddings up in `data`.
+  offset is a traced argument, so this compiles once rather than per step.
+  '''
+  rows = jax.lax.dynamic_slice(perm, (offset,), (batch_size,))
+  return {'examples': data[pool_dev['class_idxs'][rows], pool_dev['exemplar_inds'][rows]],
+          'labels': pool_dev['labels'][rows]}
+
+def build_or_load_pool(opts, train_data_sampler, run_folder):
+  '''
+  Returns the finite training pool as a dict of numpy arrays, or None.
+
+  - If opts.pool_file is set, loads that pool (generation 1 onwards).
+  - Else, if opts.pool_size is set, samples generation 0 from the original
+    train sampler (so it has real labels) and saves it to
+    <run_folder>/pool_gen0.h5.
+  - Otherwise returns None, and training uses the original sampler.
+
+  Pool arrays (one row per sequence, N = pool size, L+1 = context + query):
+    class_idxs       [N, L+1]  original class index at each position
+    exemplar_inds    [N, L+1]  exemplar index at each position
+    idx_types        [N, L+1]  samplers.ItemType of each position
+    labels           [N, L+1]  labels the model trains on; between
+                               generations only labels[:, -1] (the query
+                               label) changes
+    true_query_label [N]       the correct query label, never changed
+  We store indices rather than embeddings: examples are rebuilt with
+  data[class_idxs, exemplar_inds], which keeps the file small.
+  '''
+  if opts.pool_file is not None:
+    with h5.File(opts.pool_file, 'r') as f:
+      pool = {k: np.array(f[k]) for k in POOL_KEYS + ['true_query_label']}
+      print('Loaded pool from {} (generation {}, {} sequences)'.format(
+        opts.pool_file, f.attrs.get('generation', '?'), len(pool['labels'])))
+    return pool
+
+  if opts.pool_size is None:
+    return None
+
+  print('Sampling a pool of {} sequences (pool_seed={})'.format(opts.pool_size, opts.pool_seed))
+  # Separate key from train_seed, so the pool doesn't depend on training order
+  pool_key = jax.random.PRNGKey(opts.pool_seed)
+  chunks = {k: [] for k in POOL_KEYS}
+  n_batches = -(-opts.pool_size // opts.train_bs)  # ceiling division
+  for _ in range(n_batches):
+    pool_key, use_key = jax.random.split(pool_key)
+    batch = train_data_sampler(use_key)
+    for k in POOL_KEYS:
+      # np.asarray moves each batch off the GPU as we go
+      chunks[k].append(np.asarray(batch[k]))
+  pool = {k: np.concatenate(chunks[k], axis=0)[:opts.pool_size] for k in POOL_KEYS}
+  # .copy() so this never changes when labels[:, -1] is overwritten later
+  pool['true_query_label'] = pool['labels'][:, -1].copy()
+
+  path = os.path.join(run_folder, 'pool_gen0.h5')
+  with h5.File(path, 'w') as f:
+    for k, v in pool.items():
+      f.create_dataset(k, data=v)
+    f.attrs['generation'] = 0
+    f.attrs['source'] = 'real'
+    f.attrs['pool_seed'] = opts.pool_seed
+  print('Saved pool to', path)
+  return pool
 
 def run_with_opts(opts):
 
@@ -344,6 +415,9 @@ def run_with_opts(opts):
     assign_query_label_random=opts.assign_query_label_random),
     data=data))
 
+  # Finite training pool (None unless --pool_size or --pool_file is given)
+  pool = build_or_load_pool(opts, train_data_sampler, run_folder)
+
   train_data_seed, train_model_seed = jax.random.split(opts.train_seed, 2)
   eval_data_seed, eval_model_seed = jax.random.split(opts.eval_seed, 2)
 
@@ -464,7 +538,24 @@ def run_with_opts(opts):
   ### MAIN TRAIN LOOP ###
   # Runs eval and checkpoints according to schedule
   # Note i = iterations = # sequences seen
-  
+    ### Setup training from the pool (if any) ###
+  # Each pass over the pool uses a fresh shuffle, derived from train_seed and
+  # the pass number. Because it only depends on i, resuming from a checkpoint
+  # with --load_from_ckpt continues with exactly the right batches.
+  if pool is not None:
+    pool_n = len(pool['labels'])
+    if pool_n % opts.train_bs != 0:
+      raise ValueError('Pool size ({}) must be a multiple of train_bs ({})'.format(pool_n, opts.train_bs))
+    if opts.noise_scale_train > 0:
+      raise ValueError('noise_scale_train > 0 is not supported when training from a pool')
+    # Move the index arrays to the device once (~50MB for 1M rows)
+    pool_dev = {k: jnp.asarray(pool[k]) for k in ['class_idxs', 'exemplar_inds', 'labels']}
+    pool_shuffle_key = jax.random.fold_in(opts.train_seed, 1)
+    pool_pass, pool_perm = None, None
+    print('Training from pool: {} rows, {:.2f} passes'.format(
+      pool_n, (opts.train_iters - start_iter) / pool_n))
+      
+
   for i in range(start_iter, opts.train_iters, opts.train_bs):
     if eval_ind < len(opts.eval_sched) and i >= opts.eval_sched[eval_ind]:
       if not opts.suppress_output:
@@ -527,7 +618,16 @@ def run_with_opts(opts):
     # 'examples' is [batch_size, train_context_len + 1, embedding_dim]
     # 'labels' is [batch_size, train_context_len + 1]
     # (the +1 is for the target/query)
-    batch = train_data_sampler(current_data_seed)
+    if pool is None:
+      batch = train_data_sampler(current_data_seed)
+    else:
+      # Which pass over the pool we're on, and where in it
+      this_pass, offset = divmod(i, pool_n)
+      if this_pass != pool_pass:
+        # Shuffle once per pass (not per step: permuting 1M rows is slow)
+        pool_perm = jax.random.permutation(jax.random.fold_in(pool_shuffle_key, this_pass), pool_n)
+        pool_pass = this_pass
+      batch = get_pool_batch(data, pool_dev, pool_perm, offset, batch_size=opts.train_bs)
 
     train_model_seed, current_model_seed = jax.random.split(train_model_seed)
     metrics, model, opt_state = train_step(model=model, 
