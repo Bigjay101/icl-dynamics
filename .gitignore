@@ -2,3 +2,10 @@ __pycache__/
 .ipynb_checkpoints/
 ih_paper_reprod/
 .DS_Store
+
+# Results and logs from the collapse pipeline (never commit these)
+collapse/
+scratch/
+phases_*/
+investigate_out/
+*.log

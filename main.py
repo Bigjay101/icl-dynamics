@@ -211,21 +211,9 @@ def evaluate(
     retval[k] = eval_fn(model, eval_data[k]['examples'], eval_data[k]['labels'], key=seed)
   return retval
 
+
 POOL_KEYS = ['class_idxs', 'exemplar_inds', 'idx_types', 'labels']
 
-@partial(jax.jit, static_argnames='batch_size')
-def get_pool_batch(data, pool_dev, perm, offset, batch_size):
-  '''
-  Builds one training batch from the pool, in the same format as
-  train_data_sampler: {'examples': [bs, L+1, dim], 'labels': [bs, L+1]}.
-
-  Takes the `batch_size` rows of the pool at positions offset..offset+bs of
-  the shuffled order `perm`, and looks their embeddings up in `data`.
-  offset is a traced argument, so this compiles once rather than per step.
-  '''
-  rows = jax.lax.dynamic_slice(perm, (offset,), (batch_size,))
-  return {'examples': data[pool_dev['class_idxs'][rows], pool_dev['exemplar_inds'][rows]],
-          'labels': pool_dev['labels'][rows]}
 
 def build_or_load_pool(opts, train_data_sampler, run_folder):
   '''
@@ -282,6 +270,22 @@ def build_or_load_pool(opts, train_data_sampler, run_folder):
     f.attrs['pool_seed'] = opts.pool_seed
   print('Saved pool to', path)
   return pool
+
+
+@partial(jax.jit, static_argnames='batch_size')
+def get_pool_batch(data, pool_dev, perm, offset, batch_size):
+  '''
+  Builds one training batch from the pool, in the same format as
+  train_data_sampler: {'examples': [bs, L+1, dim], 'labels': [bs, L+1]}.
+
+  Takes the `batch_size` rows of the pool at positions offset..offset+bs of
+  the shuffled order `perm`, and looks their embeddings up in `data`.
+  offset is a traced argument, so this compiles once rather than per step.
+  '''
+  rows = jax.lax.dynamic_slice(perm, (offset,), (batch_size,))
+  return {'examples': data[pool_dev['class_idxs'][rows], pool_dev['exemplar_inds'][rows]],
+          'labels': pool_dev['labels'][rows]}
+
 
 def run_with_opts(opts):
 
@@ -535,10 +539,7 @@ def run_with_opts(opts):
     results.create_dataset('eval_iter', shape=(0,), maxshape=(None,), dtype=int)
   results.close()
 
-  ### MAIN TRAIN LOOP ###
-  # Runs eval and checkpoints according to schedule
-  # Note i = iterations = # sequences seen
-    ### Setup training from the pool (if any) ###
+  ### Setup training from the pool (if any) ###
   # Each pass over the pool uses a fresh shuffle, derived from train_seed and
   # the pass number. Because it only depends on i, resuming from a checkpoint
   # with --load_from_ckpt continues with exactly the right batches.
@@ -554,7 +555,10 @@ def run_with_opts(opts):
     pool_pass, pool_perm = None, None
     print('Training from pool: {} rows, {:.2f} passes'.format(
       pool_n, (opts.train_iters - start_iter) / pool_n))
-      
+
+  ### MAIN TRAIN LOOP ###
+  # Runs eval and checkpoints according to schedule
+  # Note i = iterations = # sequences seen
 
   for i in range(start_iter, opts.train_iters, opts.train_bs):
     if eval_ind < len(opts.eval_sched) and i >= opts.eval_sched[eval_ind]:
