@@ -27,6 +27,7 @@ class ItemType(IntEnum):
   BURSTY = 1
   DISTRACTOR = 2
   QUERY = 3
+  NEXT = 4  # extended version: the symbol after the query
 
 
 def get_constant_burst_seq_idxs(
@@ -285,12 +286,43 @@ def fewshot_fliplabels(
   return out.reshape(*class_idxs.shape)
   
   
+def add_next_symbol(key, class_idxs, exemplar_inds, idx_types, labels, p_repeat):
+  """Extended version: append a 4th (symbol, label) pair after the query.
+
+  The sequence A 1 B 2 A continues with the *other* context item (B 2) with
+  probability 1 - p_repeat, or with the query's own item (A 1) with
+  probability p_repeat. The class, exemplar and label are copied from that
+  context item, so the next symbol's label is always defined in context.
+
+  Assumes 2 context items + 1 query (train_context_len 2, burstiness 1).
+  """
+  batch, n = class_idxs.shape
+  assert n == 3, "Extended version assumes 2 context items and 1 query"
+  context = class_idxs[:, :2]
+  # Position (0 or 1) of the context item that matches the query
+  match_pos = jnp.argmax(context == class_idxs[:, 2:3], axis=1)
+  next_is_repeat = jax.random.bernoulli(key, p_repeat, (batch,))
+  next_pos = jnp.where(next_is_repeat, match_pos, 1 - match_pos)
+  rows = jnp.arange(batch)
+
+  def append(a, col):
+    return jnp.concatenate([a, col[:, None].astype(a.dtype)], axis=1)
+
+  return {'class_idxs': append(class_idxs, context[rows, next_pos]),
+          'exemplar_inds': append(exemplar_inds, exemplar_inds[rows, next_pos]),
+          'idx_types': append(idx_types, jnp.full((batch,), int(ItemType.NEXT))),
+          'labels': append(labels, labels[rows, next_pos]),
+          'next_is_repeat': next_is_repeat}
+
+
 def make_data_sampler(
   class_sampler: Callable, 
   exemplar_sampler: Callable, 
   fs_relabel: Optional[str] = None,
   noise_scale: float = 0.0,
-  assign_query_label_random: bool = False,):
+  assign_query_label_random: bool = False,
+  extended: bool = False,
+  p_repeat: float = 0.5,):
   """Build a function which samples data as specified.
 
   Args:
@@ -304,6 +336,10 @@ def make_data_sampler(
         exemplars. Defaults to 0.0 (no noise).
       assign_query_label_random (bool, optional): Whether to assign the query 
         label to a random exemplar in-context. Defaults to False.
+      extended (bool, optional): Extended version: append the next symbol and
+        its label after the query (see add_next_symbol). Defaults to False.
+      p_repeat (float, optional): Extended version only: probability that the
+        next symbol repeats the query's own symbol. Defaults to 0.5.
   """
   def sample(key: Array, data):
     keys = jax.random.split(key, 3)
@@ -323,13 +359,21 @@ def make_data_sampler(
       labels = fewshot_fliplabels(**class_out)
     elif fs_relabel is not None:
       labels = fewshot_relabel(keys[2], labels=fs_relabel, **class_out)
-    examples = data[class_out['class_idxs'], exemplar_inds]
+    out = {'labels': labels,
+           'class_idxs': class_out['class_idxs'],
+           'idx_types': class_out['idx_types'],
+           'exemplar_inds': exemplar_inds}
+    if extended:
+      # fold_in leaves the keys above untouched, so the first 3 items of each
+      # sequence are exactly what the base version would sample
+      out = add_next_symbol(jax.random.fold_in(key, 1), out['class_idxs'],
+                            out['exemplar_inds'], out['idx_types'],
+                            out['labels'], p_repeat)
+    examples = data[out['class_idxs'], out['exemplar_inds']]
     if noise_scale > 0:
       _, noise_key = jax.random.split(key)
       examples += noise_scale * jax.random.normal(noise_key, examples.shape)
-    return {'examples': examples, 'labels': labels,
-            'class_idxs': class_out['class_idxs'],
-            'idx_types': class_out['idx_types'],
-            'exemplar_inds': exemplar_inds}
+    out['examples'] = examples
+    return out
   return sample
 

@@ -51,6 +51,8 @@ def create_parser():
   parser.add_argument('--lr', default=1e-5, type=float, help="Learning rate")
   parser.add_argument('--optimizer', default='adam', type=str, choices=['adam', 'sgd', 'warmup_decay', 'cosine'], help="Optimizer to use.")
   parser.add_argument('--weight_decay', default=0.0, type=float, help="Weight decay.")
+  parser.add_argument('--extended', action='store_true', help="Extended version: each sequence also continues with the next symbol and its label after the query, and the model predicts all three")
+  parser.add_argument('--p_repeat', default=0.5, type=float, help="Extended version only: probability that the next symbol repeats the query's own symbol (otherwise it is the other context symbol)")
   parser.add_argument('--pool_size', default=None, type=int, help="Number of sequences to generate for generation 0. If not set (and no --pool_file), training uses the original sampler.")
   parser.add_argument('--pool_seed', default=10, type=int, help="Random seed for the pool only, separate from train_seed")
   parser.add_argument('--pool_file', default=None, type=str, help="Path of an existing pool (h5) to load, for generation 1 onwards")
