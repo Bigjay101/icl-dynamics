@@ -615,6 +615,9 @@ class SequenceClassifier(eqx.Module):
   transformer: Transformer
 
   unembed: enn.Linear
+  # Extended version only: predicts the next symbol (a class) at label
+  # positions. None in the base version, so base checkpoints still load.
+  symbol_unembed: Optional[enn.Linear]
   inference: bool
 
   def __init__(
@@ -623,6 +626,7 @@ class SequenceClassifier(eqx.Module):
     num_classes: int,
     embed_dim: int,
     key: Array,
+    num_symbol_classes: Optional[int] = None,
     example_embed_drop_rate: float = 0.0,
     pos_embed_drop_rate: float = 0.0,
     example_type: str = 'file',
@@ -711,6 +715,18 @@ class SequenceClassifier(eqx.Module):
                                   out_features=num_classes, 
                                   use_bias=True)
 
+    if num_symbol_classes is None:
+      self.symbol_unembed = None
+    else:
+      # Its own key (fold_in), so every other weight is initialised exactly
+      # as in the base version
+      self.symbol_unembed = CustomLinear(key=jrandom.fold_in(key, 7),
+                                         w_init='lecun_normal',
+                                         b_init=jax.nn.initializers.zeros,
+                                         in_features=embed_dim,
+                                         out_features=num_symbol_classes,
+                                         use_bias=True)
+
   def call_with_all_aux(
     self, examples: Array, labels: Array, *, key: Array, cache=dict(), cache_mask=dict()
   ) -> Array:
@@ -766,6 +782,13 @@ class SequenceClassifier(eqx.Module):
 
     # Discard labels predicted for labels, i.e., undo interleaving.
     assign_fn('out', r['unembedding'][0::2, :])
+
+    if self.symbol_unembed is not None:
+      # Extended version: symbol predictions at the label positions
+      # (1, 3, 5, ...). With 4 pairs, out_symbol[2] is read at the query's
+      # label token and predicts the next symbol.
+      label_positions = r['transformer_output']['out'][1::2, :]
+      assign_fn('out_symbol', jax.vmap(self.symbol_unembed)(label_positions))
 
     return r
 

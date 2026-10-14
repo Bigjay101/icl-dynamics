@@ -240,6 +240,9 @@ def get_model_from_opts(opts, input_shape=None):
     num_classes=opts.model_output_classes,
     embed_dim=opts.d_model,
     key=opts.init_seed,
+    # Extended version: a second output over the training classes, for the
+    # next symbol. getattr: configs saved before this flag existed are base runs
+    num_symbol_classes=(opts.class_split[0] if getattr(opts, 'extended', False) else None),
     depth=opts.depth,
     num_heads=opts.num_heads,
     mlp_ratio=opts.mlp_ratio,
