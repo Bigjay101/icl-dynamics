@@ -73,13 +73,36 @@ def compute_loss(
   weight_decay: float,
   x: Array, 
   y: Array, 
-  keys: Array
+  keys: Array,
+  c: Array = None,
 ) -> Array:
-  pred_y = jax.vmap(partial(fwd_fn, model=model))(x=x, y=y, key=keys)['out']
-  query_ce = ce(pred_y[:, -1, :], y[:, -1])
+  out = jax.vmap(partial(fwd_fn, model=model))(x=x, y=y, key=keys)
+  pred_y = out['out']
+  if c is None:
+    # Base version (unchanged): loss on the query label, the last item
+    task_loss = ce(pred_y[:, -1, :], y[:, -1]).mean()
+  else:
+    # Extended version: items are [context, context, query, next]
+    task_loss = extended_losses(out, y, c)['total'].mean()
   # Hacky, but prevents nan'ing gradients of 0 (which biases are initialized too)
   weight_norm = jnp.sum(jnp.stack(jax.tree_map(lambda x: jnp.linalg.norm(jnp.where(x != 0, x, 0)), jax.tree_leaves(eqx.filter(model, eqx.is_array)))))
-  return query_ce.mean() + weight_decay * weight_norm
+  return task_loss + weight_decay * weight_norm
+
+
+# Extended version. Sequences are 4 items: context, context, query, next.
+# The model predicts the query's label (label output at item 2), the next
+# symbol (symbol output read at the query's label token) and the next
+# symbol's label (label output at item 3).
+QUERY, NEXT = 2, 3
+
+
+def extended_losses(out, y, c):
+  '''Per-sequence losses of the three predictions. c: class indices [bs, 4].'''
+  query = ce(out['out'][:, QUERY, :], y[:, QUERY])
+  symbol = ce(out['out_symbol'][:, QUERY, :], c[:, NEXT])
+  next_label = ce(out['out'][:, NEXT, :], y[:, NEXT])
+  return {'query': query, 'symbol': symbol, 'next_label': next_label,
+          'total': query + symbol + next_label}
 
 
 # Comment this jit if looking to microbatch
@@ -94,6 +117,7 @@ def train_step(
   x: Array,
   y: Array,
   key: Array,
+  c: Array = None,
 ) -> Tuple[Array, eqx.Module, Array]:
   keys = jax.random.split(key, x.shape[0])
 
@@ -104,10 +128,11 @@ def train_step(
     use_x = x[i:i+microbs]
     use_y = y[i:i+microbs]
     use_keys = keys[i:i+microbs]
+    use_c = None if c is None else c[i:i+microbs]
     # For some reason using keywords for the argument on the next line breaks things
     # I think it has to do with how equinox implements the value_and_grad wrapper
     # Namely, it "priveleges" 'x' I think
-    mini_loss, mini_grad = compute_loss(model, fwd_fn, weight_decay, use_x, use_y, use_keys)
+    mini_loss, mini_grad = compute_loss(model, fwd_fn, weight_decay, use_x, use_y, use_keys, use_c)
     losses.append(mini_loss)
     grads.append(mini_grad)
 
@@ -180,15 +205,83 @@ def eval_step(
           'use_context_prob': use_context_prob}
 
 
+def label_metrics(pred_y, y, in_context_mask, prefix=''):
+  """The base version's label metrics, for one item position."""
+  prob_y = jax.nn.softmax(pred_y)
+  in_context_pred_y = in_context_mask*pred_y - (1-in_context_mask)*1e20
+  return {prefix + 'loss': ce(pred_y, y),
+          prefix + 'acc': accuracy(pred_y, y),
+          prefix + 'in_context_acc': accuracy(in_context_pred_y, y),
+          prefix + 'prob': jnp.einsum('bc,bc->b', prob_y, jax.nn.one_hot(y, pred_y.shape[-1])),
+          prefix + 'in_context_prob': jnp.einsum('bc,bc->b', jax.nn.softmax(in_context_pred_y),
+                                                 jax.nn.one_hot(y, pred_y.shape[-1])),
+          prefix + 'use_context_prob': jnp.sum(in_context_mask*prob_y, axis=-1)}
+
+
+@eqx.filter_jit
+def eval_step_extended(model, fwd_fn, x, y, key, c, num_symbol_classes):
+  """Extended version's metrics. c: class indices [bs, 4].
+
+  Query metrics keep the base names (loss, in_context_acc, ...), so base and
+  extended runs are compared on the same quantity. next_label_* are the same
+  metrics for the next symbol's label. symbol_* describe the next-symbol
+  prediction; they are NaN where the true next symbol is outside the 50
+  training classes (the held-out-class evaluator), as the symbol output
+  cannot name those classes.
+  """
+  keys = jax.random.split(key, x.shape[0])
+  out = jax.vmap(partial(fwd_fn, model=model))(x=x, y=y, key=keys)
+  pred = out['out']
+  n_labels = pred.shape[-1]
+  # The two context labels: the only labels the model can copy
+  in_context_mask = jnp.sum(jax.nn.one_hot(y[:, :QUERY], n_labels), axis=1) > 0
+
+  metrics = label_metrics(pred[:, QUERY, :], y[:, QUERY], in_context_mask)
+  metrics.update(label_metrics(pred[:, NEXT, :], y[:, NEXT], in_context_mask, prefix='next_label_'))
+
+  sym = out['out_symbol'][:, QUERY, :]
+  sym_prob = jax.nn.softmax(sym)
+  target = c[:, NEXT]
+  rows = jnp.arange(x.shape[0])
+  valid = jnp.all(c < num_symbol_classes, axis=1)
+  safe = jnp.where(c < num_symbol_classes, c, 0)
+  query_class, other_class = safe[:, QUERY], jnp.where(safe[:, 0] == safe[:, QUERY], safe[:, 1], safe[:, 0])
+  pred_class = jnp.argmax(sym, axis=-1)
+  nan_if_invalid = lambda v: jnp.where(valid, v.astype(jnp.float32), jnp.nan)
+  metrics.update({
+    'symbol_loss': nan_if_invalid(ce(sym, jnp.where(valid, target, 0))),
+    'symbol_acc': nan_if_invalid(pred_class == target),
+    # Probability the model gives to repeating the query's own symbol: the
+    # quantity that should drift across generations (real data: p_repeat)
+    'symbol_repeat_prob': nan_if_invalid(sym_prob[rows, query_class]),
+    'symbol_other_prob': nan_if_invalid(sym_prob[rows, other_class]),
+    # Probability on the two context symbols together (the rest is on the
+    # 48 symbols not in context)
+    'symbol_use_context_prob': nan_if_invalid(sym_prob[rows, query_class] + sym_prob[rows, other_class]),
+    # Share of the in-context probability that goes to repeating: the model's
+    # estimate of p_repeat once out-of-context symbols are set aside
+    'symbol_repeat_share': nan_if_invalid(sym_prob[rows, query_class] /
+                                          (sym_prob[rows, query_class] + sym_prob[rows, other_class])),
+    'symbol_pred_repeat': nan_if_invalid(pred_class == query_class),
+    'symbol_pred_in_context': nan_if_invalid((pred_class == query_class) | (pred_class == other_class)),
+  })
+  losses = extended_losses(out, y, jnp.where(c < num_symbol_classes, c, 0))
+  metrics['total_loss'] = nan_if_invalid(losses['total'])
+  return metrics
+
+
 def make_batched_fn(fn, batch_size):
-  def batched_fn(model, x, y, key):
+  def batched_fn(model, x, y, key, c=None):
     total = x.shape[0]
     metrics = dict()
     seed = key
     for it in range(0, total, batch_size):
       seed, use = jax.random.split(seed)
       cap = min(it+batch_size, total)
-      out = fn(model=model, x=x[it:cap], y=y[it:cap], key=use)
+      if c is None:
+        out = fn(model=model, x=x[it:cap], y=y[it:cap], key=use)
+      else:
+        out = fn(model=model, x=x[it:cap], y=y[it:cap], key=use, c=c[it:cap])
       for m in out:
         metrics.setdefault(m, []).append(out[m])
     for m in metrics:
@@ -202,17 +295,28 @@ def evaluate(
   fwd_fn,
   key: Array,
   eval_data,
-  eval_batch_size
+  eval_batch_size,
+  num_symbol_classes=None,
 ):
   seeds = jax.random.split(key, len(eval_data))
-  eval_fn = make_batched_fn(partial(eval_step, fwd_fn=fwd_fn), eval_batch_size)
   retval = dict()
-  for seed, k in zip(seeds, eval_data):
-    retval[k] = eval_fn(model, eval_data[k]['examples'], eval_data[k]['labels'], key=seed)
+  if num_symbol_classes is None:
+    eval_fn = make_batched_fn(partial(eval_step, fwd_fn=fwd_fn), eval_batch_size)
+    for seed, k in zip(seeds, eval_data):
+      retval[k] = eval_fn(model, eval_data[k]['examples'], eval_data[k]['labels'], key=seed)
+  else:
+    # Extended version: needs each item's class, for the next-symbol metrics
+    eval_fn = make_batched_fn(partial(eval_step_extended, fwd_fn=fwd_fn,
+                                      num_symbol_classes=num_symbol_classes), eval_batch_size)
+    for seed, k in zip(seeds, eval_data):
+      retval[k] = eval_fn(model, eval_data[k]['examples'], eval_data[k]['labels'], key=seed,
+                          c=eval_data[k]['class_idxs'])
   return retval
 
 
 POOL_KEYS = ['class_idxs', 'exemplar_inds', 'idx_types', 'labels']
+# Extended version only: the real next item, kept unchanged across generations
+EXTENDED_TRUE_KEYS = ['true_next_class', 'true_next_exemplar', 'true_next_label', 'true_next_is_repeat']
 
 
 def build_or_load_pool(opts, train_data_sampler, run_folder):
@@ -233,12 +337,15 @@ def build_or_load_pool(opts, train_data_sampler, run_folder):
                                generations only labels[:, -1] (the query
                                label) changes
     true_query_label [N]       the correct query label, never changed
+  Extended version (--extended): 4 items per sequence (context, context,
+  query, next); the query is item 2, and the pool also keeps the real next
+  item (EXTENDED_TRUE_KEYS), which relabelling never changes.
   We store indices rather than embeddings: examples are rebuilt with
   data[class_idxs, exemplar_inds], which keeps the file small.
   '''
   if opts.pool_file is not None:
     with h5.File(opts.pool_file, 'r') as f:
-      pool = {k: np.array(f[k]) for k in POOL_KEYS + ['true_query_label']}
+      pool = {k: np.array(f[k]) for k in POOL_KEYS + ['true_query_label'] + EXTENDED_TRUE_KEYS if k in f}
       print('Loaded pool from {} (generation {}, {} sequences)'.format(
         opts.pool_file, f.attrs.get('generation', '?'), len(pool['labels'])))
     return pool
@@ -258,8 +365,15 @@ def build_or_load_pool(opts, train_data_sampler, run_folder):
       # np.asarray moves each batch off the GPU as we go
       chunks[k].append(np.asarray(batch[k]))
   pool = {k: np.concatenate(chunks[k], axis=0)[:opts.pool_size] for k in POOL_KEYS}
-  # .copy() so this never changes when labels[:, -1] is overwritten later
-  pool['true_query_label'] = pool['labels'][:, -1].copy()
+  # .copy() so this never changes when the labels are overwritten later
+  if opts.extended:
+    pool['true_query_label'] = pool['labels'][:, QUERY].copy()
+    pool['true_next_class'] = pool['class_idxs'][:, NEXT].copy()
+    pool['true_next_exemplar'] = pool['exemplar_inds'][:, NEXT].copy()
+    pool['true_next_label'] = pool['labels'][:, NEXT].copy()
+    pool['true_next_is_repeat'] = (pool['class_idxs'][:, NEXT] == pool['class_idxs'][:, QUERY])
+  else:
+    pool['true_query_label'] = pool['labels'][:, -1].copy()
 
   path = os.path.join(run_folder, 'pool_gen0.h5')
   with h5.File(path, 'w') as f:
@@ -268,6 +382,9 @@ def build_or_load_pool(opts, train_data_sampler, run_folder):
     f.attrs['generation'] = 0
     f.attrs['source'] = 'real'
     f.attrs['pool_seed'] = opts.pool_seed
+    f.attrs['extended'] = bool(opts.extended)
+    if opts.extended:
+      f.attrs['p_repeat'] = opts.p_repeat
   print('Saved pool to', path)
   return pool
 
@@ -284,7 +401,8 @@ def get_pool_batch(data, pool_dev, perm, offset, batch_size):
   '''
   rows = jax.lax.dynamic_slice(perm, (offset,), (batch_size,))
   return {'examples': data[pool_dev['class_idxs'][rows], pool_dev['exemplar_inds'][rows]],
-          'labels': pool_dev['labels'][rows]}
+          'labels': pool_dev['labels'][rows],
+          'class_idxs': pool_dev['class_idxs'][rows]}
 
 
 def run_with_opts(opts):
@@ -306,6 +424,13 @@ def run_with_opts(opts):
       opts.train_bs = new_bs
 
   main_utils.check_opts(opts)
+
+  if opts.extended:
+    # The extended sampler assumes 2 context items, one of them the query's
+    if opts.train_context_len != 2 or list(opts.pt_burstiness) != [1]:
+      raise ValueError('--extended needs --train_context_len 2 and --pt_burstiness 1')
+    if opts.load_eval_data is not None:
+      raise ValueError('--extended does not support --load_eval_data (no class indices in the file)')
 
   if opts.disable_jit:
     print("Disabling jit")
@@ -416,7 +541,9 @@ def run_with_opts(opts):
     train_exemplar_sampler,
     fs_relabel=splits['relabeling']['train'],
     noise_scale=opts.noise_scale_train,
-    assign_query_label_random=opts.assign_query_label_random),
+    assign_query_label_random=opts.assign_query_label_random,
+    extended=opts.extended,
+    p_repeat=opts.p_repeat),
     data=data))
 
   # Finite training pool (None unless --pool_size or --pool_file is given)
@@ -474,7 +601,9 @@ def run_with_opts(opts):
       eval_exemplar_sampler,
       fs_relabel=splits['relabeling'][smart_index(opts.pe_fs_relabel_scheme, i, 'None')],
       noise_scale=smart_index(opts.pe_noise_scale, i, opts.noise_scale_train),
-      assign_query_label_random=smart_index(opts.pe_assign_query_label_random, i, 0))
+      assign_query_label_random=smart_index(opts.pe_assign_query_label_random, i, 0),
+      extended=opts.extended,
+      p_repeat=opts.p_repeat)
     eval_data[name] = eval_data_sampler(eval_data_seeds[i], data)
 
   if opts.save_eval_data is not None:
@@ -556,6 +685,9 @@ def run_with_opts(opts):
     print('Training from pool: {} rows, {:.2f} passes'.format(
       pool_n, (opts.train_iters - start_iter) / pool_n))
 
+  # Extended version: number of classes the symbol output can name
+  num_symbol_classes = opts.class_split[0] if opts.extended else None
+
   ### MAIN TRAIN LOOP ###
   # Runs eval and checkpoints according to schedule
   # Note i = iterations = # sequences seen
@@ -569,7 +701,8 @@ def run_with_opts(opts):
                       fwd_fn=fwd_fn_to_use, 
                       key=current_eval_seed, 
                       eval_data=eval_data, 
-                      eval_batch_size=opts.eval_bs)
+                      eval_batch_size=opts.eval_bs,
+                      num_symbol_classes=num_symbol_classes)
       results = h5.File('/'.join([run_folder, 'log.h5']), 'a')
       for k in out:
         for m in out[k]:
@@ -642,7 +775,8 @@ def run_with_opts(opts):
                                             weight_decay=opts.weight_decay,
                                             x=batch['examples'], 
                                             y=batch['labels'], 
-                                            key=current_model_seed)
+                                            key=current_model_seed,
+                                            c=batch['class_idxs'] if opts.extended else None)
     train_metrics['iter'].append(i+opts.train_bs)
     for m in metrics:
       train_metrics[m].append(metrics[m])
@@ -657,7 +791,8 @@ def run_with_opts(opts):
                   fwd_fn=fwd_fn_to_use,
                   key=current_eval_seed, 
                   eval_data=eval_data, 
-                  eval_batch_size=opts.eval_bs)
+                  eval_batch_size=opts.eval_bs,
+                  num_symbol_classes=num_symbol_classes)
   results = h5.File('/'.join([run_folder, 'log.h5']), 'a')
   if len(train_metrics['iter']) > 0:
     print('-')
