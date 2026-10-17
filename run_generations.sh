@@ -18,6 +18,13 @@
 #
 # Settings can be overridden with environment variables, e.g.
 #   TRAIN_ITERS=20000 bash run_generations.sh ...
+#
+# Extended version: train generation 0 with --extended, point GEN0_RUN and
+# GEN0_POOL at it, and pass the training flags in EXTRA_ARGS (relabel.py
+# detects the extended model by itself), e.g.
+#   GEN0_RUN=collapse_ext/gen0 GEN0_POOL=collapse_ext/gen0/pool_gen0.h5 BASE=collapse_ext \
+#   EXTRA_ARGS="--extended --p_repeat 0.5 --lr 0.00003" bash run_generations.sh ext_T1 sample 1.0 0.0 10
+# Flags in EXTRA_ARGS come after TRAIN_ARGS, so they override it (here --lr).
 
 set -euo pipefail
 
@@ -45,6 +52,8 @@ INIT_SEED=${INIT_SEED:-5}
 # keep their true label in every generation.
 RELABEL_SEED_BASE=${RELABEL_SEED_BASE:-0}
 KEEP_REAL_SEED=${KEEP_REAL_SEED:-0}
+# Extra flags for main.py, e.g. "--extended --p_repeat 0.5" (empty for the base version)
+EXTRA_ARGS=${EXTRA_ARGS:-}
 
 # Same settings as the paper's Figure 3a run (ih_paper_runs.sh)
 TRAIN_ARGS="--data_file omniglot_resnet18_randomized_order_s0.h5 --mixing_coeffs 1.0 --pt_burstiness 1 \
@@ -63,6 +72,7 @@ done
 
 echo "=== Condition $COND: method=$METHOD T=$TEMP keep_real_frac=$KEEP generations=$NGEN ==="
 echo "    generation 0: $GEN0_RUN on $GEN0_POOL; train_iters=$TRAIN_ITERS ckpt_every=$CKPT_EVERY"
+[ -n "$EXTRA_ARGS" ] && echo "    extra training flags: $EXTRA_ARGS"
 
 for n in $(seq 1 "$NGEN"); do
   if [ "$n" -eq 1 ]; then
@@ -89,7 +99,7 @@ for n in $(seq 1 "$NGEN"); do
       --method "$METHOD" --temperature "$TEMP" --keep_real_frac "$KEEP" \
       --relabel_seed $((RELABEL_SEED_BASE * 1000 + n)) --keep_real_seed "$KEEP_REAL_SEED" \
       > "$LOG" 2>&1 || { echo "ERROR: relabel for gen $n failed; end of $LOG:"; tail -n 5 "$LOG"; exit 1; }
-    grep -E "wrong|distractor|not in|kept|query label freq" "$LOG" || true
+    grep -E "wrong|distractor|not in|kept|query label freq|repeat|other one|matches" "$LOG" || true
   fi
 
   # 2. Train generation n from scratch on its pool
@@ -98,7 +108,7 @@ for n in $(seq 1 "$NGEN"); do
   echo "[$(date '+%H:%M:%S')] gen $n: training"
   $PY main.py $TRAIN_ARGS --train_iters "$TRAIN_ITERS" --eval_every "$EVAL_EVERY" \
     --ckpt_every "$CKPT_EVERY" --init_seed "$INIT_SEED" \
-    --base_folder "$OUT" --run "gen$n" --pool_file "$POOL" \
+    --base_folder "$OUT" --run "gen$n" --pool_file "$POOL" $EXTRA_ARGS \
     > "$LOG" 2>&1 || { echo "ERROR: training gen $n failed; end of $LOG:"; tail -n 5 "$LOG"; exit 1; }
   [ -f "$RUN/checkpoints/$FINAL_CKPT" ] || { echo "ERROR: gen $n did not save its final checkpoint; see $LOG"; exit 1; }
   echo "[$(date '+%H:%M:%S')] gen $n: done ($(grep 'total training time' "$OUT/gen${n}_train.log"))"
