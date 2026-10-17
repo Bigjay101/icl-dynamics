@@ -74,9 +74,10 @@ if full:
   check('next symbol stays in context (symbol_use_context_prob > 0.95)', final['symbol_use_context_prob'] > 0.95)
   check(f'repeat share close to p_repeat (|{final["symbol_repeat_share"]:.3f} - {p}| < 0.05)',
         abs(final['symbol_repeat_share'] - p) < 0.05)
-  # Best possible symbol loss with a 50/50 choice between two symbols is ln 2
-  check(f'symbol loss near its floor ln 2 = 0.693 (got {final["symbol_loss"]:.3f})',
-        final['symbol_loss'] < 0.693 + 0.1)
+  # Best possible symbol loss: the entropy of the repeat/other choice (ln 2 for p = 0.5, 0 for p = 0 or 1)
+  floor = 0.0 if p in (0.0, 1.0) else float(-p * np.log(p) - (1 - p) * np.log(1 - p))
+  check(f'symbol loss near its floor {floor:.3f} (got {final["symbol_loss"]:.3f})',
+        final['symbol_loss'] < floor + 0.1)
 
 print('\nALL PASSED' if ok else '\nSOME CHECKS FAILED')
 sys.exit(0 if ok else 1)

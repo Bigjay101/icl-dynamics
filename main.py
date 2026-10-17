@@ -548,6 +548,14 @@ def run_with_opts(opts):
 
   # Finite training pool (None unless --pool_size or --pool_file is given)
   pool = build_or_load_pool(opts, train_data_sampler, run_folder)
+  if pool is not None:
+    # A base pool has 3 items per sequence, an extended pool 4: never mix them
+    n_items = pool['labels'].shape[1]
+    if opts.extended and n_items != 4:
+      raise ValueError('--extended needs an extended pool (4 items per sequence), but {} has {}. '
+                       'Is GEN0_RUN/GEN0_POOL pointing at a base run?'.format(opts.pool_file, n_items))
+    if not opts.extended and n_items == 4:
+      raise ValueError('{} is an extended pool (4 items per sequence): pass --extended'.format(opts.pool_file))
 
   train_data_seed, train_model_seed = jax.random.split(opts.train_seed, 2)
   eval_data_seed, eval_model_seed = jax.random.split(opts.eval_seed, 2)

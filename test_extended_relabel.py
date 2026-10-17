@@ -73,13 +73,21 @@ out = relabel.extended_outputs(model, fwd_fn, data, jnp.asarray(c[sub]), jnp.asa
                                jnp.asarray(b['labels'][sub]))
 m = model_rows[sub]
 if method == 'argmax':
-  # Each choice must be the model's argmax given the tokens generated before it
-  check('query label = argmax given the context',
-        np.array_equal(np.asarray(out['query']).argmax(-1)[m], b['labels'][sub, 2][m]))
-  check('next symbol = argmax given the generated query label',
-        np.array_equal(np.asarray(out['symbol']).argmax(-1)[m], c[sub, 3][m]))
-  check('next label = argmax given the generated symbol',
-        np.array_equal(np.asarray(out['next_label']).argmax(-1)[m], b['labels'][sub, 3][m]))
+  # Each choice must be the model's argmax given the tokens generated before it.
+  # On a GPU, two separately compiled forward passes can differ in the last
+  # decimal place, which flips near-ties; those are allowed, anything else is not.
+  def argmax_check(name, logits, chosen):
+    logits = np.asarray(logits)[m]
+    chosen = chosen[m]
+    mismatch = logits.argmax(-1) != chosen
+    # How far the stored choice is below the top logit, for each mismatch
+    gap = logits.max(-1) - logits[np.arange(len(chosen)), chosen]
+    worst = float(gap[mismatch].max()) if mismatch.any() else 0.0
+    check(f'{name} ({int(mismatch.sum())} of {len(chosen)} differ, all near-ties: largest gap {worst:.2e})',
+          worst < 1e-3)
+  argmax_check('query label = argmax given the context', out['query'], b['labels'][sub, 2])
+  argmax_check('next symbol = argmax given the generated query label', out['symbol'], c[sub, 3])
+  argmax_check('next label = argmax given the generated symbol', out['next_label'], b['labels'][sub, 3])
 else:
   rep = (c[:, 3] == c[:, 2])[model_rows].mean()
   prob = b['symbol_repeat_prob'][model_rows].mean()

@@ -70,6 +70,22 @@ for f in "$GEN0_POOL" "$GEN0_RUN/config.json"; do
   [ -e "$f" ] || { echo "ERROR: $f not found (generation 0 is needed first)"; exit 1; }
 done
 
+# Base and extended runs must not be mixed: check generation 0 matches EXTRA_ARGS
+GEN0_EXT=$($PY -c "import h5py,sys; print(int(h5py.File(sys.argv[1],'r')['labels'].shape[1] == 4))" "$GEN0_POOL")
+case " $EXTRA_ARGS " in
+  *" --extended "*) WANT_EXT=1 ;;
+  *) WANT_EXT=0 ;;
+esac
+if [ "$GEN0_EXT" != "$WANT_EXT" ]; then
+  if [ "$GEN0_EXT" = 1 ]; then
+    echo "ERROR: generation 0 pool $GEN0_POOL is an extended pool, but EXTRA_ARGS has no --extended."
+  else
+    echo "ERROR: EXTRA_ARGS has --extended, but generation 0 pool $GEN0_POOL is a base pool."
+  fi
+  echo "       Set GEN0_RUN and GEN0_POOL (and BASE) on the same line as the command, or export them."
+  exit 1
+fi
+
 echo "=== Condition $COND: method=$METHOD T=$TEMP keep_real_frac=$KEEP generations=$NGEN ==="
 echo "    generation 0: $GEN0_RUN on $GEN0_POOL; train_iters=$TRAIN_ITERS ckpt_every=$CKPT_EVERY"
 [ -n "$EXTRA_ARGS" ] && echo "    extra training flags: $EXTRA_ARGS"
