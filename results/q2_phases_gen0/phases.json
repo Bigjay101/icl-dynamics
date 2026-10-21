@@ -1,0 +1,38 @@
+{
+  "collapse/gen0_pool": {
+    "metric": "fsl_val_rl/in_context_acc",
+    "ih_formation": {
+      "start": 0.493,
+      "peak": 0.997,
+      "peak_iter": 970016,
+      "final": 0.997,
+      "rise": 0.504,
+      "iter_10pct": 78145.82857142854,
+      "iter_50pct": 247220.48,
+      "iter_90pct": 463014.4000000002,
+      "steepest_rise_interval": [
+        260000,
+        265024
+      ],
+      "steepest_rise_per_1k_iters": 0.005374203821656055,
+      "eval_resolution_at_50pct": 4992
+    },
+    "loss_plateaus": [
+      {
+        "start_iter": 49632,
+        "end_iter": 157728,
+        "mean_loss": 0.7261122915828747,
+        "reaches_end_of_training": false
+      },
+      {
+        "start_iter": 165600,
+        "end_iter": 176576,
+        "mean_loss": 0.6605435041494148,
+        "reaches_end_of_training": false
+      }
+    ],
+    "initial_train_loss": 1.8198635116700204,
+    "final_train_loss": 0.0018087141384791226,
+    "converged_iter": null
+  }
+}

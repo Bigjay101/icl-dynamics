@@ -1,0 +1,117 @@
+{
+  "results/runs/q2/controlA_gen0_longer": {
+    "metric": "fsl_val_rl/in_context_acc",
+    "ih_formation": {
+      "start": 0.997,
+      "peak": 1.0,
+      "peak_iter": 1145024,
+      "final": 1.0,
+      "rise": 0.0030000000000000027,
+      "iter_10pct": 1008268.7999999999,
+      "iter_50pct": 1127519.9999999998,
+      "iter_90pct": 1143516.8000000003,
+      "steepest_rise_interval": [
+        1005024,
+        1010016
+      ],
+      "steepest_rise_per_1k_iters": 0.000400641025641026,
+      "eval_resolution_at_50pct": 4992
+    },
+    "note": "metric only rose by 0.003 (< --min_rise 0.05); induction heads may not have formed",
+    "loss_plateaus": [],
+    "initial_train_loss": 0.0012577002668084818,
+    "final_train_loss": 1.886076872889105e-07,
+    "converged_iter": null
+  },
+  "results/runs/q2/controlB_T2_gen10_own_pool": {
+    "metric": "fsl_val_rl/in_context_acc",
+    "ih_formation": {
+      "start": 0.49,
+      "peak": 0.517,
+      "peak_iter": 1265024,
+      "final": 0.5,
+      "rise": 0.027000000000000024,
+      "iter_10pct": 1006694.4,
+      "iter_50pct": 1008768.0,
+      "iter_90pct": 1264434.2260869564,
+      "steepest_rise_interval": [
+        1945024,
+        1950016
+      ],
+      "steepest_rise_per_1k_iters": 0.008413461538461547,
+      "eval_resolution_at_50pct": 4992
+    },
+    "note": "metric only rose by 0.027 (< --min_rise 0.05); induction heads may not have formed",
+    "loss_plateaus": [
+      {
+        "start_iter": 1000032,
+        "end_iter": 2000000,
+        "mean_loss": 1.609705234512329,
+        "reaches_end_of_training": true
+      }
+    ],
+    "initial_train_loss": 1.6088649169091254,
+    "final_train_loss": 1.6088437264965427,
+    "converged_iter": 1000032
+  },
+  "results/runs/q2/recover_T1_gen10": {
+    "metric": "fsl_val_rl/in_context_acc",
+    "ih_formation": {
+      "start": 0.954,
+      "peak": 1.0,
+      "peak_iter": 1895008,
+      "final": 0.999,
+      "rise": 0.04600000000000004,
+      "iter_10pct": 1001444.4,
+      "iter_50pct": 1075008.0,
+      "iter_90pct": 1471014.4,
+      "steepest_rise_interval": [
+        1000000,
+        1005024
+      ],
+      "steepest_rise_per_1k_iters": 0.003184713375796181,
+      "eval_resolution_at_50pct": 4992
+    },
+    "note": "metric only rose by 0.046 (< --min_rise 0.05); induction heads may not have formed",
+    "loss_plateaus": [],
+    "initial_train_loss": 0.029361752507787556,
+    "final_train_loss": 2.7561808242500128e-05,
+    "converged_iter": null
+  },
+  "results/runs/q2/recover_T2_gen10": {
+    "metric": "fsl_val_rl/in_context_acc",
+    "ih_formation": {
+      "start": 0.49,
+      "peak": 0.992,
+      "peak_iter": 1975008,
+      "final": 0.991,
+      "rise": 0.502,
+      "iter_10pct": 1223215.3599999999,
+      "iter_50pct": 1343349.3333333333,
+      "iter_90pct": 1588019.2,
+      "steepest_rise_interval": [
+        1315008,
+        1320000
+      ],
+      "steepest_rise_per_1k_iters": 0.005408653846153829,
+      "eval_resolution_at_50pct": 5024
+    },
+    "loss_plateaus": [
+      {
+        "start_iter": 1043552,
+        "end_iter": 1262592,
+        "mean_loss": 0.7103853517984947,
+        "reaches_end_of_training": false
+      },
+      {
+        "start_iter": 1270208,
+        "end_iter": 1280672,
+        "mean_loss": 0.6222457346029397,
+        "reaches_end_of_training": false
+      }
+    ],
+    "initial_train_loss": 1.5911060340942875,
+    "final_train_loss": 0.005631222419681087,
+    "converged_iter": null
+  }
+}

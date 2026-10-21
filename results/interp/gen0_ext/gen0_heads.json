@@ -1,0 +1,179 @@
+{
+  "run_folder": "collapse_ext/gen0_p50",
+  "iteration": 1000000,
+  "evaluator": "fsl_val_rl",
+  "n_probe": 1000,
+  "extended": true,
+  "metrics": {
+    "acc": 0.991,
+    "in_context_acc": 0.991,
+    "loss": 0.023765090366205128,
+    "use_context_prob": 0.9999996158054769,
+    "next_label_acc": 0.996,
+    "next_label_in_context_acc": 0.996,
+    "next_label_loss": 0.014648464189447099,
+    "next_label_use_context_prob": 0.9999995056505551,
+    "symbol_repeat_share": 0.5254317034097514,
+    "symbol_use_context_prob": 0.9807753477080321
+  },
+  "logged_in_log_h5": {
+    "iter": 1000000,
+    "value": 0.991
+  },
+  "picks": {
+    "induction": [
+      1,
+      2
+    ],
+    "prev_token": [
+      0,
+      1
+    ],
+    "prev_token_set": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        0,
+        5
+      ],
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  "scores_of_picks": {
+    "matching": 0.811493992805481,
+    "induction": 0.8982294201850891,
+    "prev_token": 0.6172721982002258,
+    "chance_induction": 0.2,
+    "prev_token_set": {
+      "0:1": 0.6172721982002258,
+      "0:2": 0.5343952178955078,
+      "0:5": 0.610205352306366,
+      "0:7": 0.5602442622184753
+    }
+  },
+  "layer_numbering": "0-indexed (L0 = the team guide's 'layer 1', L1 = 'layer 2')",
+  "single_ablation_acc_drop_of_picks": {
+    "IH": 0.09499999999999997,
+    "PT": 0.07399999999999995
+  },
+  "most_important_head_by_ablation": [
+    0,
+    6
+  ],
+  "ablation_agrees_with_attention_pick": false,
+  "circuit_ablation": {
+    "none": {
+      "acc": 0.991,
+      "in_context_acc": 0.991,
+      "loss": 0.023765090366205128,
+      "use_context_prob": 0.9999996158054769,
+      "next_label_acc": 0.996,
+      "next_label_in_context_acc": 0.996,
+      "next_label_loss": 0.014648464189447099,
+      "next_label_use_context_prob": 0.9999995056505551,
+      "symbol_repeat_share": 0.5254317034097514,
+      "symbol_use_context_prob": 0.9807753477080321
+    },
+    "IH": {
+      "acc": 0.896,
+      "in_context_acc": 0.898,
+      "loss": 0.27908990493592706,
+      "use_context_prob": 0.9934352779146479,
+      "next_label_acc": 0.899,
+      "next_label_in_context_acc": 0.903,
+      "next_label_loss": 0.27998144481886295,
+      "next_label_use_context_prob": 0.9806914783990753,
+      "symbol_repeat_share": 0.525299580068126,
+      "symbol_use_context_prob": 0.9687356226316578
+    },
+    "PT": {
+      "acc": 0.917,
+      "in_context_acc": 0.917,
+      "loss": 0.2530173159702837,
+      "use_context_prob": 0.9999932070795384,
+      "next_label_acc": 0.918,
+      "next_label_in_context_acc": 0.918,
+      "next_label_loss": 0.2257268901060003,
+      "next_label_use_context_prob": 0.9999839530067005,
+      "symbol_repeat_share": 0.5485520763509949,
+      "symbol_use_context_prob": 0.963585638119549
+    },
+    "IH+PT": {
+      "acc": 0.753,
+      "in_context_acc": 0.772,
+      "loss": 0.955892787911791,
+      "use_context_prob": 0.9380105043535885,
+      "next_label_acc": 0.742,
+      "next_label_in_context_acc": 0.777,
+      "next_label_loss": 1.0116771672850096,
+      "next_label_use_context_prob": 0.9014507941343143,
+      "symbol_repeat_share": 0.5417556125281758,
+      "symbol_use_context_prob": 0.9449152138024857
+    },
+    "all PT-set heads": {
+      "acc": 0.634,
+      "in_context_acc": 0.634,
+      "loss": 0.9956389671507485,
+      "use_context_prob": 0.999998112430222,
+      "next_label_acc": 0.672,
+      "next_label_in_context_acc": 0.672,
+      "next_label_loss": 0.8742275006472423,
+      "next_label_use_context_prob": 0.9995085894856814,
+      "symbol_repeat_share": 0.6176128096570349,
+      "symbol_use_context_prob": 0.9031661669133253
+    },
+    "all L1 except IH": {
+      "acc": 0.888,
+      "in_context_acc": 0.891,
+      "loss": 0.32103056571636057,
+      "use_context_prob": 0.9906167865421468,
+      "next_label_acc": 0.877,
+      "next_label_in_context_acc": 0.879,
+      "next_label_loss": 0.3323461450370777,
+      "next_label_use_context_prob": 0.9893902122887246,
+      "symbol_repeat_share": 0.5303035717277521,
+      "symbol_use_context_prob": 0.24287890853060126
+    },
+    "all L1": {
+      "acc": 0.118,
+      "in_context_acc": 0.476,
+      "loss": 4.23354493022308,
+      "use_context_prob": 0.2654557036845001,
+      "next_label_acc": 0.102,
+      "next_label_in_context_acc": 0.498,
+      "next_label_loss": 4.349038289555348,
+      "next_label_use_context_prob": 0.243364651810902,
+      "symbol_repeat_share": 0.5375857797689139,
+      "symbol_use_context_prob": 0.10610897618230535
+    },
+    "all L0": {
+      "acc": 0.267,
+      "in_context_acc": 0.505,
+      "loss": 2.854472794638564,
+      "use_context_prob": 0.5255571012439139,
+      "next_label_acc": 0.266,
+      "next_label_in_context_acc": 0.485,
+      "next_label_loss": 2.8356429144194752,
+      "next_label_use_context_prob": 0.5405977553904757,
+      "symbol_repeat_share": 0.6283938399844106,
+      "symbol_use_context_prob": 0.14133691689850378
+    }
+  },
+  "paper_reference": "Singh et al. used IH 1:3 and PT 0:2 for init seed 5 (ih_paper_runs.sh)",
+  "next_symbol_reader": {
+    "best_head": [
+      1,
+      2
+    ],
+    "matching_of_query_IH": 0.801819920539856
+  }
+}

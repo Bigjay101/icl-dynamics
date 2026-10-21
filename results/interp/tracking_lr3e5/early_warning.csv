@@ -1,0 +1,21 @@
+run,circuit_measure,behaviour,circuit_first_gen,behaviour_first_gen,lead_generations,verdict,circuit_first_gen_rel10,behaviour_first_gen_rel10,z_threshold,circuit_z_by_gen
+T2_lr3e5,matching_g0IH,in_context_acc,4,4,0,same generation,4,4,3.0,0:0.0 1:0.3 2:-3.0 3:-1.8 4:16.5 5:107.8 6:131.3
+T2_lr3e5,matching_g0IH,acc,4,4,0,same generation,4,4,3.0,0:0.0 1:0.3 2:-3.0 3:-1.8 4:16.5 5:107.8 6:131.3
+T2_lr3e5,matching_g0IH,loss,4,1,-3,behaviour first,4,1,3.0,0:0.0 1:0.3 2:-3.0 3:-1.8 4:16.5 5:107.8 6:131.3
+T2_lr3e5,matching_g0IH,use_context_prob,4,1,-3,behaviour first,4,3,3.0,0:0.0 1:0.3 2:-3.0 3:-1.8 4:16.5 5:107.8 6:131.3
+T2_lr3e5,matching_max,in_context_acc,4,4,0,same generation,4,4,3.0,0:0.0 1:0.3 2:-3.0 3:-1.8 4:16.5 5:85.2 6:90.9
+T2_lr3e5,matching_max,acc,4,4,0,same generation,4,4,3.0,0:0.0 1:0.3 2:-3.0 3:-1.8 4:16.5 5:85.2 6:90.9
+T2_lr3e5,matching_max,loss,4,1,-3,behaviour first,4,1,3.0,0:0.0 1:0.3 2:-3.0 3:-1.8 4:16.5 5:85.2 6:90.9
+T2_lr3e5,matching_max,use_context_prob,4,1,-3,behaviour first,4,3,3.0,0:0.0 1:0.3 2:-3.0 3:-1.8 4:16.5 5:85.2 6:90.9
+T2_lr3e5,induction_g0IH,in_context_acc,4,4,0,same generation,5,4,3.0,0:0.0 1:-1.4 2:-6.8 3:-6.4 4:12.3 5:120.4 6:148.2
+T2_lr3e5,induction_g0IH,acc,4,4,0,same generation,5,4,3.0,0:0.0 1:-1.4 2:-6.8 3:-6.4 4:12.3 5:120.4 6:148.2
+T2_lr3e5,induction_g0IH,loss,4,1,-3,behaviour first,5,1,3.0,0:0.0 1:-1.4 2:-6.8 3:-6.4 4:12.3 5:120.4 6:148.2
+T2_lr3e5,induction_g0IH,use_context_prob,4,1,-3,behaviour first,5,3,3.0,0:0.0 1:-1.4 2:-6.8 3:-6.4 4:12.3 5:120.4 6:148.2
+T2_lr3e5,prev_token_g0PT,in_context_acc,1,4,3,circuit first (early warning),4,4,3.0,0:0.0 1:35.0 2:33.6 3:27.3 4:53.5 5:124.6 6:162.4
+T2_lr3e5,prev_token_g0PT,acc,1,4,3,circuit first (early warning),4,4,3.0,0:0.0 1:35.0 2:33.6 3:27.3 4:53.5 5:124.6 6:162.4
+T2_lr3e5,prev_token_g0PT,loss,1,1,0,same generation,4,1,3.0,0:0.0 1:35.0 2:33.6 3:27.3 4:53.5 5:124.6 6:162.4
+T2_lr3e5,prev_token_g0PT,use_context_prob,1,1,0,same generation,4,3,3.0,0:0.0 1:35.0 2:33.6 3:27.3 4:53.5 5:124.6 6:162.4
+T2_lr3e5,prev_token_g0PTset,in_context_acc,1,4,3,circuit first (early warning),4,4,3.0,0:0.0 1:60.4 2:52.1 3:13.1 4:93.1 5:282.4 6:402.2
+T2_lr3e5,prev_token_g0PTset,acc,1,4,3,circuit first (early warning),4,4,3.0,0:0.0 1:60.4 2:52.1 3:13.1 4:93.1 5:282.4 6:402.2
+T2_lr3e5,prev_token_g0PTset,loss,1,1,0,same generation,4,1,3.0,0:0.0 1:60.4 2:52.1 3:13.1 4:93.1 5:282.4 6:402.2
+T2_lr3e5,prev_token_g0PTset,use_context_prob,1,1,0,same generation,4,3,3.0,0:0.0 1:60.4 2:52.1 3:13.1 4:93.1 5:282.4 6:402.2

@@ -1,0 +1,113 @@
+{
+  "run_folder": "results/runs/q2/controlA_gen0_longer",
+  "iteration": 2000000,
+  "evaluator": "fsl_val_rl",
+  "n_probe": 1000,
+  "extended": false,
+  "metrics": {
+    "acc": 1.0,
+    "in_context_acc": 1.0,
+    "loss": 3.4850951909466534e-05,
+    "use_context_prob": 0.9999999572410093
+  },
+  "logged_in_log_h5": {
+    "iter": 2000000,
+    "value": 1.0
+  },
+  "picks": {
+    "induction": [
+      1,
+      3
+    ],
+    "prev_token": [
+      0,
+      2
+    ],
+    "prev_token_set": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        0,
+        5
+      ]
+    ]
+  },
+  "scores_of_picks": {
+    "matching": 0.9376435279846191,
+    "induction": 0.9636235237121582,
+    "prev_token": 0.9171063303947449,
+    "chance_induction": 0.2,
+    "prev_token_set": {
+      "0:1": 0.88625168800354,
+      "0:2": 0.9171063303947449,
+      "0:5": 0.8870581388473511
+    }
+  },
+  "layer_numbering": "0-indexed (L0 = the team guide's 'layer 1', L1 = 'layer 2')",
+  "single_ablation_acc_drop_of_picks": {
+    "IH": 0.0020000000000000018,
+    "PT": 0.02200000000000002
+  },
+  "most_important_head_by_ablation": [
+    0,
+    2
+  ],
+  "ablation_agrees_with_attention_pick": false,
+  "circuit_ablation": {
+    "none": {
+      "acc": 1.0,
+      "in_context_acc": 1.0,
+      "loss": 3.4850951909466534e-05,
+      "use_context_prob": 0.9999999572410093
+    },
+    "IH": {
+      "acc": 0.998,
+      "in_context_acc": 0.998,
+      "loss": 0.006310652550959734,
+      "use_context_prob": 0.9994732462742898
+    },
+    "PT": {
+      "acc": 0.978,
+      "in_context_acc": 0.978,
+      "loss": 0.06528752970577377,
+      "use_context_prob": 0.9999916472853448
+    },
+    "IH+PT": {
+      "acc": 0.926,
+      "in_context_acc": 0.929,
+      "loss": 0.3423635562367913,
+      "use_context_prob": 0.9923558313995752
+    },
+    "all PT-set heads": {
+      "acc": 0.649,
+      "in_context_acc": 0.651,
+      "loss": 1.5904233821419775,
+      "use_context_prob": 0.9975682355614295
+    },
+    "all L1 except IH": {
+      "acc": 1.0,
+      "in_context_acc": 1.0,
+      "loss": 0.011222856582674573,
+      "use_context_prob": 0.9995846483523672
+    },
+    "all L1": {
+      "acc": 0.169,
+      "in_context_acc": 0.483,
+      "loss": 3.0910178532475556,
+      "use_context_prob": 0.3790004896472171
+    },
+    "all L0": {
+      "acc": 0.509,
+      "in_context_acc": 0.515,
+      "loss": 3.1870300897527897,
+      "use_context_prob": 0.9631127207286829
+    }
+  },
+  "paper_reference": "Singh et al. used IH 1:3 and PT 0:2 for init seed 5 (ih_paper_runs.sh)"
+}
