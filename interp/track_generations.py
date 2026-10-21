@@ -50,7 +50,7 @@ from interp import jax_backend as jb
 from interp.find_heads_gen0 import readers_for
 from interp.head_scores import all_scores, first_move, per_sequence, pick_heads, rise_points
 
-CIRCUIT = ["matching_g0IH", "induction_g0IH", "prev_token_g0PT", "prev_token_g0PTset"]
+CIRCUIT = ["matching_g0IH", "matching_max", "induction_g0IH", "prev_token_g0PT", "prev_token_g0PTset"]
 BEHAVIOUR = {"in_context_acc": "down", "acc": "down", "loss": "up", "use_context_prob": "down"}
 CIRCUIT_DIR = "down"
 
@@ -115,9 +115,11 @@ def score_checkpoint(model, probe, g0, with_ablation):
   ihb, ptb = tuple(best["induction"]), tuple(best["prev_token"])
   seq = per_sequence(fwd["attn"], readers[0], n_items, ih0, [pt0])
   seq_set = per_sequence(fwd["attn"], readers[0], n_items, ih0, pt_set)
+  seq_best = per_sequence(fwd["attn"], readers[0], n_items, ihb, [ptb])
   beh = jb.per_sequence_behaviour(fwd, probe)
   per_seq = {"matching_g0IH": seq["matching"], "induction_g0IH": seq["induction"],
-             "prev_token_g0PT": seq["prev_token"], "prev_token_g0PTset": seq_set["prev_token"], **beh}
+             "prev_token_g0PT": seq["prev_token"], "prev_token_g0PTset": seq_set["prev_token"],
+             "matching_max": seq_best["matching"], **beh}
   row = {**jb.metrics(fwd, probe),
          "matching_g0IH": float(sc["matching"][ih0]), "induction_g0IH": float(sc["induction"][ih0]),
          "exemplar_attn_g0IH": float(sc["exemplar_attn"][ih0]),
@@ -186,6 +188,7 @@ def verdict(cg, bg):
 
 # ------------------------------------------------------------------ plots
 def plot_generations(rows, path):
+  os.environ["MPLBACKEND"] = "Agg"
   import matplotlib
   matplotlib.use("Agg")
   import matplotlib.pyplot as plt
@@ -209,6 +212,7 @@ def plot_generations(rows, path):
 
 
 def plot_within(within, path):
+  os.environ["MPLBACKEND"] = "Agg"
   import matplotlib
   matplotlib.use("Agg")
   import matplotlib.pyplot as plt
@@ -275,6 +279,14 @@ def main(argv=None):
           c = pickle.load(f)
         c["row"] = {**c["row"], "run": name, "gen": gen, **pool_outcomes(condition, gen)}
         c["within"] = [{**w, "run": name, "gen": gen} for w in c["within"]]
+        if "matching_max" not in c["per_seq"]:
+          # cache from an older version: add the best-head per-sequence scores (final checkpoint only)
+          model, _, _ = jb.load_run(folder)
+          _, ps, _ = score_checkpoint(model, probe, g0, with_ablation=False)
+          c["per_seq"]["matching_max"] = ps["matching_max"]
+          with open(cache + ".tmp", "wb") as f:
+            pickle.dump(c, f)
+          os.replace(cache + ".tmp", cache)
         print(f"  gen {gen:2d}: cached", flush=True)
       else:
         model, opts, it = jb.load_run(folder)
@@ -329,10 +341,12 @@ def main(argv=None):
                    "final_in_context_acc": float(col(d, "in_context_acc")[-1])})
     write_csv(form, os.path.join(args.out, "formation.csv"))
     plot_within(within, os.path.join(args.out, "within_training.png"))
-  print(f"\n{'run':<16}{'circuit':<20}{'behaviour':<18}{'circ@':>6}{'beh@':>6}{'lead':>6}  verdict")
+  print(f"\n{'run':<18}{'circuit':<20}{'behaviour':<18}{'circ@':>6}{'beh@':>6}{'lead':>6}"
+        f"{'c@10%':>7}{'b@10%':>7}  verdict")
   for r in ew:
-    print(f"{r['run']:<16}{r['circuit_measure']:<20}{r['behaviour']:<18}{str(r['circuit_first_gen']):>6}"
-          f"{str(r['behaviour_first_gen']):>6}{str(r['lead_generations']):>6}  {r['verdict']}")
+    print(f"{r['run']:<18}{r['circuit_measure']:<20}{r['behaviour']:<18}{str(r['circuit_first_gen']):>6}"
+          f"{str(r['behaviour_first_gen']):>6}{str(r['lead_generations']):>6}"
+          f"{str(r['circuit_first_gen_rel10']):>7}{str(r['behaviour_first_gen_rel10']):>7}  {r['verdict']}")
 
 
 if __name__ == "__main__":

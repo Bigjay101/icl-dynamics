@@ -63,6 +63,7 @@ def analyse(model, probe, ablate_each=True):
 
 
 def heatmaps(mats, picks, path):
+  os.environ["MPLBACKEND"] = "Agg"
   import matplotlib
   matplotlib.use("Agg")
   import matplotlib.pyplot as plt
@@ -88,6 +89,7 @@ def heatmaps(mats, picks, path):
 
 
 def patterns(attn, picks, path, b=0):
+  os.environ["MPLBACKEND"] = "Agg"
   import matplotlib
   matplotlib.use("Agg")
   import matplotlib.pyplot as plt
