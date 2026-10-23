@@ -62,8 +62,22 @@ in section 6. All iteration counts are training SEQUENCES seen (batch size 32), 
    notebooks/ (new): Colab notebooks
 
 7. RESULTS-TO-REPORT MAPPING
-   [fill in once the report's figures and tables are final, e.g.
-    Figure 1 -> results/interp/tracking_base/tracking.png and early_warning.csv]
+   Figures are rebuilt from the CSVs with:  python report/make_figures.py results report/figures
+   Figure 1 (a,c)  results/interp/tracking_base/tracking.csv            (runs sample_T2, sample_T1)
+   Figure 1 (b)    results/interp/tracking_lr3e5/tracking.csv           (run T2_lr3e5)
+   Figure 1 (d)    results/interp/tracking_base/within_training.csv     (sample_T2, generations 0-4)
+   Table 1         results/interp/gen0_base/gen0_heads.json, gen0_ext/gen0_heads.json  (circuit_ablation)
+   Table 2         results/interp/q2_*/gen0_heads.json; timings in results/q2_phases/phases.json
+                   and results/q2_phases_gen0/phases.json
+   Q1 verdicts     results/interp/tracking_base{,_z2,_z5}/early_warning.csv, tracking_lr3e5/,
+                   tracking_ext/early_warning.csv  (rows circuit_measure = matching_max)
+   Formation       results/interp/tracking_base/formation.csv
+   Extended drift  results/extended_drift/summary.csv
+   LR selection    results/lr_sweep_base.csv, results/lr_sweep_extended.csv
+   Test accuracy   results/test_metrics.csv  (Supplementary E)
+   Supplement A-E  the same files (tables generated from them)
+   Report sources  report/  (main.tex, checklist.tex, supplement.tex, references.bib, figures)
+   Run folders and checkpoints are not in the repository (Google Drive, MyDrive/nlp_p1).
 
 8. SEEDS
    init seed 5, pool seed 10, relabel seed RELABEL_SEED_BASE*1000+n, keep-real seed 0.

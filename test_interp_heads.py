@@ -1,18 +1,8 @@
-"""Tests for interp/ (Q1 induction-head analysis).
+# Tests for the induction-head analysis in interp/.
+# Run from the repo folder:  python test_interp_heads.py
+# With a trained run it also checks the accuracy against the training log:
+# python test_interp_heads.py collapse/gen0_pool
 
-Run from the repo folder:
-    python test_interp_heads.py                     # NumPy checks + a JAX check on a fresh model
-    python test_interp_heads.py collapse/gen0_pool  # also checks a trained run end to end
-
-Checks that
-  1. the head scores find planted previous-token / induction heads exactly,
-  2. the reader masks point at the right label tokens (base and extended layouts),
-  3. the early-warning helpers behave as documented,
-  4. (JAX) the analysis forward pass gives the same outputs as the model's normal forward,
-     attention rows sum to 1, and ablating a head changes the output while an empty
-     ablation does not,
-  5. (with a run folder) the rebuilt fsl_val_rl probe gives the accuracy main.py logged.
-"""
 import sys
 
 import numpy as np
@@ -25,49 +15,58 @@ ok = True
 
 def check(name, cond):
   global ok
+  cond = bool(cond)
   print(('PASS ' if cond else 'FAIL ') + name)
-  ok = ok and bool(cond)
+  ok = ok and cond
 
 
-# 1. planted heads (base layout: x0 y0 x1 y1 xq)
 rng = np.random.default_rng(0)
 B, L, H = 200, 2, 8
-c = np.stack([rng.choice(50, 2, replace=False) for _ in range(B)])          # distinct context classes
-c = np.concatenate([c, c[np.arange(B), rng.integers(0, 2, B)][:, None]], 1)   # query = one ctx class
+c = np.stack([rng.choice(50, 2, replace=False) for _ in range(B)])
+c = np.concatenate([c, c[np.arange(B), rng.integers(0, 2, B)][:, None]], 1)
+
 T = 5
 causal = np.tril(np.ones((T, T)))
 attn = np.broadcast_to(causal / causal.sum(-1, keepdims=True), (L, B, H, T, T)).copy()
-attn[0, :, 2] = np.eye(T, k=-1); attn[0, :, 2, 0, 0] = 1                     # PT head 0:2
+attn[0, :, 2] = np.eye(T, k=-1)
+attn[0, :, 2, 0, 0] = 1
+
 q = make_reader(c, 2, "query")
-attn[1, :, 3, 4] = q.correct / q.correct.sum(1, keepdims=True)                 # IH 1:3
+attn[1, :, 3, 4] = q.correct / q.correct.sum(1, keepdims=True)
+
 sc = all_scores(attn, [q], 3)
 check('planted previous-token head scores 1', np.isclose(sc['prev_token'][0, 2], 1))
 check('planted induction head has matching score 1', np.isclose(sc['matching'][1, 3], 1))
 check('uniform heads have matching score ~0', abs(sc['matching'][1, 0]) < 0.2)
+
 pk = pick_heads(sc)
 check('pick_heads finds IH 1:3 and PT 0:2', pk['induction'] == [1, 3] and pk['prev_token'] == [0, 2])
 check('previous-token set holds exactly the PT head', pk['prev_token_set'] == [[0, 2]])
+
 ps = per_sequence(attn, q, 3, (1, 3), [(0, 2)])
 check('per-sequence values average to the head scores',
       np.isclose(ps['matching'].mean(), sc['matching'][1, 3]) and np.isclose(ps['prev_token'].mean(), sc['prev_token'][0, 2]))
 check('chance level is 1/5 with one matching label', np.isclose(sc['chance'], 0.2))
 
-# 2. masks
+
 r = make_reader(np.array([[7, 9, 7]]), 2, 'query')
 check('query mask marks y0 only', r.correct[0].tolist() == [False, True, False, False, False])
 check('incorrect mask marks y1 only', r.incorrect[0].tolist() == [False, False, False, True, False])
 check('match mask marks x0 only', r.match_exemplar[0].tolist() == [True, False, False, False, False])
-r = make_reader(np.array([[7, 9, 7, 7]]), 3, 'next')          # extended, next symbol repeats the query
+
+r = make_reader(np.array([[7, 9, 7, 7]]), 3, 'next')
 check('extended next-symbol reader at token 6', r.pos == 6)
 check('extended next mask marks y0 and yq', r.correct[0].tolist() == [False, True, False, False, False, True, False])
 
-# 3. early-warning helpers
+
 m, a = [0.9, 0.88, 0.7, 0.5, 0.3], [0.99, 0.99, 0.98, 0.85, 0.6]
 check('first_crossing', first_crossing(m) == 2 and first_crossing(a) == 3)
 check('lead_time = +1 generation', lead_time(m, a)['lead'] == 1)
 check('formation_iter interpolates', np.isclose(formation_iter([0, 10, 20], [0.0, 0.4, 0.8], 0.5), 12.5))
+
 rp = rise_points([0, 10, 20, 30], [0.5, 0.5, 0.9, 1.0])
 check('rise_points: 50% of the rise (0.75) reached at iteration 16.25', np.isclose(rp['iter_50pct'], 16.25))
+
 rng2 = np.random.default_rng(1)
 x0 = rng2.normal(1.0, 0.1, 1000)
 xs = [x0, x0 + rng2.normal(0, 0.01, 1000), x0 - 0.05 + rng2.normal(0, 0.01, 1000)]
@@ -76,7 +75,7 @@ check('first_move flags the generation that drops beyond noise (gen 2), not gen 
 g, _ = first_move(x0, [x0, x0 + 0.05], 'up')
 check('first_move with worse=up flags an increase (e.g. loss)', g == 1)
 
-# 4./5. JAX
+
 try:
   import jax
   import jax.numpy as jnp
@@ -92,16 +91,22 @@ else:
           "--pe_names fsl_train fsl_val_rl --pe_classes train train --pe_exemplars train train "
           "--pe_fs_relabel_scheme train val --pe_burstiness 1 1 --eval_iters 64 "
           "--class_split 50 1473 100 --train_bs 32 --lr 0.00001 --d_model 64 --init_seed 5").split()
+
   for extended in (False, True):
-    opts = main_utils.create_parser().parse_args(ARGS + (['--extended'] if extended else []))
+    extra = ['--extended'] if extended else []
+
+    opts = main_utils.create_parser().parse_args(ARGS + extra)
     opts.model_output_classes = opts.fs_relabel
     probe = jb.build_probe(opts, 'fsl_val_rl')
-    mopts = main_utils.create_parser().parse_args(ARGS + (['--extended'] if extended else []))
+
+    mopts = main_utils.create_parser().parse_args(ARGS + extra)
     mopts.model_output_classes = mopts.fs_relabel
-    model = main_utils.get_model_from_opts(mopts)          # fresh (untrained) model, init seed 5
+    model = main_utils.get_model_from_opts(mopts)
+
     tag = 'extended' if extended else 'base'
     n = probe['labels'].shape[1]
     check(f'[{tag}] probe has {3 + extended} items per sequence', n == 3 + extended)
+
     fwd = jb.forward(model, probe)
     keys = jax.random.split(jax.random.PRNGKey(0), len(probe['labels']))
     ref = jax.vmap(partial(opto.default_model_fwd_fn, model=model))(
@@ -109,6 +114,7 @@ else:
     check(f'[{tag}] analysis forward matches the normal forward', np.allclose(fwd['out'], np.asarray(ref), atol=1e-5))
     check(f'[{tag}] attention shape [L,B,H,T,T]', fwd['attn'].shape == (2, len(probe['labels']), 8, 2 * n - 1, 2 * n - 1))
     check(f'[{tag}] attention rows sum to 1', np.allclose(fwd['attn'].sum(-1), 1, atol=1e-5))
+
     same = jb.forward(model, probe, ablate=[])
     diff = jb.forward(model, probe, ablate=[(1, 3)])
     check(f'[{tag}] empty ablation leaves outputs unchanged', np.allclose(same['out'], fwd['out']))
@@ -126,7 +132,6 @@ else:
     print(f'  probe acc {acc:.4f}; log.h5 fsl_val_rl/acc {logged}')
     check('log.h5 has an fsl_val_rl/acc entry', logged is not None)
     if logged is not None and logged['iter'] == it:
-      # Same model, same 1000 sequences, no dropout: should agree to rounding
       check('rebuilt probe reproduces the accuracy main.py logged at that checkpoint',
             abs(acc - logged['value']) < 0.002)
     elif logged is not None:

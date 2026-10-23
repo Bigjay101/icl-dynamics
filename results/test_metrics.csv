@@ -1,0 +1,9 @@
+run,fsl_test_class/in_context_acc,fsl_test_class/loss,fsl_train/in_context_acc,fsl_train/loss,fsl_train_valex/in_context_acc,fsl_train_valex/loss,fsl_val_rl/in_context_acc,fsl_val_rl/loss
+base gen 0,0.958,0.1193,1.0,0.0013,0.865,0.5638,0.997,0.0248
+base T=2 gen 10,0.496,1.6107,0.531,1.604,0.498,1.6085,0.495,1.6164
+base T=2 keep10 gen 10,0.498,1.3832,0.508,1.3782,0.514,1.3789,0.469,1.4102
+base T=1 gen 10,0.934,0.172,0.997,0.031,0.866,0.4545,0.954,0.1473
+base argmax gen 3,0.958,0.1193,1.0,0.0013,0.865,0.5638,0.997,0.0248
+"base gen 0, lr 3e-5",0.974,0.0984,1.0,0.0,0.898,0.8499,1.0,0.0016
+ext gen 0,0.973,0.0901,1.0,0.0007,0.863,1.0111,0.991,0.0238
+ext T=1 gen 10,0.986,0.0446,0.998,0.0099,0.876,0.4013,0.992,0.0295
